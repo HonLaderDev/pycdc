@@ -1,6 +1,7 @@
 #include "data.h"
 #include <cstring>
 #include <cstdarg>
+#include <stdexcept>
 #include <vector>
 
 /* PycData */
@@ -54,8 +55,7 @@ int PycFile::getByte()
 {
     int ch = fgetc(m_stream);
     if (ch == EOF) {
-        fputs("PycFile::getByte(): Unexpected end of stream\n", stderr);
-        std::exit(1);
+        throw std::runtime_error("PycFile::getByte(): Unexpected end of stream");
     }
     return ch;
 }
@@ -63,8 +63,7 @@ int PycFile::getByte()
 void PycFile::getBuffer(int bytes, void* buffer)
 {
     if (fread(buffer, 1, bytes, m_stream) != (size_t)bytes) {
-        fputs("PycFile::getBuffer(): Unexpected end of stream\n", stderr);
-        std::exit(1);
+        throw std::runtime_error("PycFile::getBuffer(): Unexpected end of stream");
     }
 }
 
@@ -73,8 +72,7 @@ void PycFile::getBuffer(int bytes, void* buffer)
 int PycBuffer::getByte()
 {
     if (atEof()) {
-        fputs("PycBuffer::getByte(): Unexpected end of stream\n", stderr);
-        std::exit(1);
+        throw std::runtime_error("PycBuffer::getByte(): Unexpected end of stream");
     }
     int ch = (int)(*(m_buffer + m_pos));
     ++m_pos;
@@ -84,8 +82,7 @@ int PycBuffer::getByte()
 void PycBuffer::getBuffer(int bytes, void* buffer)
 {
     if (m_pos + bytes > m_size) {
-        fputs("PycBuffer::getBuffer(): Unexpected end of stream\n", stderr);
-        std::exit(1);
+        throw std::runtime_error("PycBuffer::getBuffer(): Unexpected end of stream");
     }
     if (bytes != 0)
         memcpy(buffer, (m_buffer + m_pos), bytes);
