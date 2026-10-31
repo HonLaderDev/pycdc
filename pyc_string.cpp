@@ -5,11 +5,9 @@
 
 static bool check_ascii(const std::string& data)
 {
-    auto cp = reinterpret_cast<const unsigned char*>(data.c_str());
-    while (*cp) {
-        if (*cp & 0x80)
+    for (char ch : data) {
+        if (static_cast<unsigned char>(ch) & 0x80)
             return false;
-        ++cp;
     }
     return true;
 }
