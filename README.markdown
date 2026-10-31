@@ -39,6 +39,19 @@ The byte-code disassembly is printed to stdout.
 The decompiled Python source is printed to stdout.
 Any errors are printed to stderr.
 
+A whole tree can be decompiled at once by passing a directory; every `*.pyc`
+below it is decompiled:
+`./pycdc [PATH TO DIRECTORY] -o [OUTPUT DIRECTORY]`
+
+With `-o`, the argument is treated as a directory unless it ends in `.py` (or
+already is one).  Files are then written to the source path recorded inside
+ each module (`co_filename`), so a tree of renamed bytecode files is restored
+to its original layout:
+`./pycdc extracted/7eda1a8b_6ce325b5.pyc -o output`
+writes `output/gui_2d/ui/hall/developer/view/DeveloperIntroductionWindow.py`.
+That path is also reported in the header of every decompiled file, as
+`# Embedded file name:`.
+
 **Marshalled code objects**:
 Both tools support Python marshalled code objects, as output from `marshal.dumps(compile(...))`.
 
