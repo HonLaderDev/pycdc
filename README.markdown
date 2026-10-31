@@ -52,6 +52,10 @@ writes `output/gui_2d/ui/hall/developer/view/DeveloperIntroductionWindow.py`.
 That path is also reported in the header of every decompiled file, as
 `# Embedded file name:`.
 
+Progress is written to stderr, one line per finished file, so stdout stays
+clean when it is used for decompiled source:
+`[3/4354] -> output/gui_2d/ui/hall/developer/view/DeveloperIntroductionWindow.py`
+
 **Marshalled code objects**:
 Both tools support Python marshalled code objects, as output from `marshal.dumps(compile(...))`.
 

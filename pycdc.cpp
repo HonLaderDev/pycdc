@@ -224,6 +224,16 @@ static bool writeOutputFile(const std::string& path, const std::string& data)
     return true;
 }
 
+static void reportProgress(bool enabled, size_t index, size_t total,
+                           const std::string& path, bool ok)
+{
+    if (!enabled)
+        return;
+    fprintf(stderr, "[%zu/%zu] %s %s\n", index + 1, total,
+            ok ? "->" : "!!", path.c_str());
+    fflush(stderr);
+}
+
 static void showUsage(const char* argv0)
 {
     fprintf(stderr, "Usage:  %s [options] input.pyc|input-dir ...\n\n", argv0);
@@ -341,11 +351,16 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    // Progress goes to stderr so that it cannot end up in decompiled output.
+    bool showProgress = haveDirInput || files.size() > 1;
+
     int failures = 0;
-    for (const std::string& file : files) {
+    for (size_t index = 0; index < files.size(); ++index) {
+        const std::string& file = files[index];
         PycModule mod;
         if (!loadModule(mod, file, marshalled, major, minor)) {
             ++failures;
+            reportProgress(showProgress, index, files.size(), file, false);
             continue;
         }
 
@@ -357,11 +372,13 @@ int main(int argc, char* argv[])
         } catch (std::exception& ex) {
             fprintf(stderr, "Error decompyling %s: %s\n", file.c_str(), ex.what());
             ++failures;
+            reportProgress(showProgress, index, files.size(), file, false);
             continue;
         }
 
         if (!haveOut) {
             std::cout << output.str();
+            reportProgress(showProgress, index, files.size(), file, true);
             continue;
         }
 
@@ -392,8 +409,11 @@ int main(int argc, char* argv[])
             target = outPath;
         }
 
-        if (!writeOutputFile(target, output.str()))
+        bool written = writeOutputFile(target, output.str());
+        if (!written)
             ++failures;
+        reportProgress(showProgress, index, files.size(),
+                       written ? target : file, written);
     }
 
     return (failures != 0) ? 1 : 0;
