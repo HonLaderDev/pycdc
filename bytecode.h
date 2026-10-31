@@ -1,3 +1,5 @@
+#ifndef _PYC_BYTECODE_H
+#define _PYC_BYTECODE_H
 #include "pyc_code.h"
 #include "pyc_module.h"
 #include "data.h"
@@ -34,3 +36,4 @@ void bc_disasm(std::ostream& pyc_output, PycRef<PycCode> code, PycModule* mod,
                int indent, unsigned flags);
 void bc_exceptiontable(std::ostream& pyc_output, PycRef<PycCode> code,
                int indent);
+#endif
