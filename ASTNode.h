@@ -372,6 +372,8 @@ public:
     ASTSet(value_t values)
         : ASTNode(NODE_SET), m_values(std::move(values)) { }
 
+    void add(PycRef<ASTNode> value) { m_values.push_back(std::move(value)); }
+
     const value_t& values() const { return m_values; }
 
 private:

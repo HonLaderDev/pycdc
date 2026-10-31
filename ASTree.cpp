@@ -419,8 +419,39 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 stack.pop();
                 PycRef<ASTNode> value = stack.top();
                 stack.pop();
-                PycRef<ASTMap> map = stack.top().cast<ASTMap>();
-                map->add(key, value);
+                PycRef<ASTMap> map = stack.top().try_cast<ASTMap>();
+                if (map != NULL)
+                    map->add(key, value);
+                else
+                    fputs("Warning: STORE_MAP on a non-dict object\n", stderr);
+            }
+            break;
+        case Pyc::SET_ADD_A:
+            {
+                // set.add(value); the set itself stays on the stack
+                PycRef<ASTNode> value = stack.top();
+                stack.pop();
+
+                PycRef<ASTSet> set = stack.top().try_cast<ASTSet>();
+                if (set != NULL)
+                    set->add(value);
+                else
+                    fputs("Warning: SET_ADD on a non-set object\n", stderr);
+            }
+            break;
+        case Pyc::MAP_ADD_A:
+            {
+                // map[key] = value; key and value are popped, the map stays
+                PycRef<ASTNode> value = stack.top();
+                stack.pop();
+                PycRef<ASTNode> key = stack.top();
+                stack.pop();
+
+                PycRef<ASTMap> map = stack.top().try_cast<ASTMap>();
+                if (map != NULL)
+                    map->add(key, value);
+                else
+                    fputs("Warning: MAP_ADD on a non-dict object\n", stderr);
             }
             break;
         case Pyc::BUILD_SLICE_A:
@@ -2861,6 +2892,16 @@ static void end_line(std::ostream& pyc_output)
 }
 
 int cur_indent = -1;
+
+// Tracks the nesting depth of decompyle() calls.  A value of 1 means this is a
+// top-level (per-module) decompilation; deeper values are the recursive calls
+// that print nested code objects (functions, classes, lambdas).  Several globals
+// below (cur_indent, node_seen, code_seen, ...) carry state for an entire
+// decompilation, so they must only be reset at the top level -- never for a
+// nested call, or a nested function body would lose the indentation it inherits
+// from its enclosing scope.
+static int decompyle_depth = 0;
+
 static void print_block(PycRef<ASTBlock> blk, PycModule* mod,
                         std::ostream& pyc_output)
 {
@@ -3605,6 +3646,26 @@ static std::unordered_set<PycCode *> code_seen;
 
 void decompyle(PycRef<PycCode> code, PycModule* mod, std::ostream& pyc_output)
 {
+    // Reset all per-decompilation state when this is a top-level call.  These
+    // globals persist across calls, and when many modules are decompiled in one
+    // process (the recursive tree mode, or a long-running binding) a truncated
+    // stream or an unbalanced file can leave them dirty.  Without this reset the
+    // leftover cur_indent compounds across thousands of files into runaway
+    // indentation, and stale node_seen/code_seen entries cause spurious
+    // circular-reference drops.  Nested (code-object) calls must keep the
+    // inherited state, so only the outermost call resets.
+    struct DepthGuard { ~DepthGuard() { --decompyle_depth; } };
+    DepthGuard _guard;
+    ++decompyle_depth;
+    if (decompyle_depth == 1) {
+        cur_indent = -1;
+        node_seen.clear();
+        code_seen.clear();
+        inLambda = false;
+        printDocstringAndGlobals = false;
+        printClassDocstring = true;
+    }
+
     if (code_seen.find((PycCode *)code) != code_seen.end()) {
         fputs("WARNING: Circular reference detected\n", stderr);
         return;
