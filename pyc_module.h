@@ -46,6 +46,9 @@ public:
 
     void loadFromFile(const char* filename);
     void loadFromMarshalledFile(const char *filename, int major, int minor);
+    // Loads from any PycData (e.g. a PycBuffer).  Pass a version to load a raw
+    // marshalled code object, or omit it to detect the version from the magic.
+    void loadFromStream(class PycData* stream, int major = -1, int minor = -1);
     bool isValid() const { return (m_maj >= 0) && (m_min >= 0); }
 
     int majorVer() const { return m_maj; }
