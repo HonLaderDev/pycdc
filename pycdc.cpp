@@ -89,6 +89,10 @@ int main(int argc, char* argv[])
     }
     const char* dispname = strrchr(infile, PATHSEP);
     dispname = (dispname == NULL) ? infile : dispname + 1;
+    // Python 2 源码默认按 ASCII 解码，而 py2 的 str 常量可能原样输出非 ASCII
+    // 字节，因此必须声明编码，否则生成的文件无法被 Python 2 再次解析。
+    if (mod.majorVer() < 3)
+        *pyc_output << "# -*- coding: utf-8 -*-\n";
     *pyc_output << "# Source Generated with Decompyle++\n";
     formatted_print(*pyc_output, "# File: %s (Python %d.%d%s)\n\n", dispname,
                     mod.majorVer(), mod.minorVer(),
