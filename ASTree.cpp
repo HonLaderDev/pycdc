@@ -2006,7 +2006,8 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     if (popBlock(blocks, curblock))
                         curblock->append(prev.cast<ASTNode>());
 
-                    bc_next(source, mod, opcode, operand, pos);
+                    if (!source.atEof())
+                        bc_next(source, mod, opcode, operand, pos);
                 }
             }
             break;
