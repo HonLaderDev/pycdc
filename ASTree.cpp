@@ -997,7 +997,9 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                         curblock = blocks.top();
 
                         /* Turn it into an else statement. */
-                        if (curblock->end() != pos || curblock.cast<ASTContainerBlock>()->hasFinally()) {
+                        bool hasFinally = (curblock->blktype() == ASTBlock::BLK_CONTAINER)
+                                && curblock.cast<ASTContainerBlock>()->hasFinally();
+                        if (curblock->end() != pos || hasFinally) {
                             PycRef<ASTBlock> elseblk = new ASTBlock(ASTBlock::BLK_ELSE, prev->end());
                             elseblk->init();
                             blocks.push(elseblk);
@@ -1644,7 +1646,10 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
             stack.push(new ASTLoadBuildClass(new PycObject()));
             break;
         case Pyc::LOAD_CLOSURE_A:
-            /* Ignore this */
+            // The cell object is irrelevant for decompilation.
+            // Push a placeholder so a following BUILD_TUPLE keeps the
+            // stack balanced; otherwise it would consume an unrelated operand.
+            stack.push(new ASTName(code->getCellVar(mod, operand)));
             break;
         case Pyc::LOAD_CONST_A:
             {
@@ -1712,12 +1717,43 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                 PycRef<ASTNode> fun_code = stack.top();
                 stack.pop();
 
-                /* Test for the qualified name of the function (at TOS) */
-                int tos_type = fun_code.cast<ASTObject>()->object().type();
+                // Test for the qualified name of the function (at TOS).
+                // If TOS is not the code object, a stray value from an
+                // earlier unbalanced expression or block leaked onto the
+                // stack; scan downward for the real code object instead of
+                // throwing std::bad_cast.
+                int tos_type = -1;
+                if (fun_code.type() == ASTNode::NODE_OBJECT)
+                    tos_type = fun_code.cast<ASTObject>()->object().type();
                 if (tos_type != PycObject::TYPE_CODE &&
                     tos_type != PycObject::TYPE_CODE2) {
-                    fun_code = stack.top();
-                    stack.pop();
+                    PycRef<ASTNode> found;
+                    while (!stack.empty()) {
+                        PycRef<ASTNode> c = stack.top();
+                        stack.pop();
+                        if (c.type() == ASTNode::NODE_OBJECT) {
+                            int ct = c.cast<ASTObject>()->object().type();
+                            if (ct == PycObject::TYPE_CODE || ct == PycObject::TYPE_CODE2) {
+                                found = c;
+                                break;
+                            }
+                        }
+                    }
+                    if (found == nullptr) {
+                        // No code object recoverable; emit a placeholder.
+                        stack.push(new ASTNode(ASTNode::NODE_INVALID));
+                        break;
+                    }
+                    fun_code = found;
+                    tos_type = fun_code.cast<ASTObject>()->object().type();
+                }
+                if (opcode == Pyc::MAKE_CLOSURE_A) {
+                    if (mod->majorVer() == 2) {
+                        if (!stack.empty()) {
+                            if (stack.top().type() == ASTNode::NODE_TUPLE)
+                                stack.pop();
+                        }
+                    }
                 }
 
                 ASTFunction::defarg_t defArgs, kwDefArgs;
@@ -2006,8 +2042,14 @@ PycRef<ASTNode> BuildFromCode(PycRef<PycCode> code, PycModule* mod)
                     if (popBlock(blocks, curblock))
                         curblock->append(prev.cast<ASTNode>());
 
-                    if (!source.atEof())
-                        bc_next(source, mod, opcode, operand, pos);
+                    // Do NOT peek the next opcode here. The outer decode
+                    // loop reads it on the next iteration; calling bc_next()
+                    // now would advance pos twice and silently drop the
+                    // instruction that follows the early return, unbalancing
+                    // the stack for whatever comes next (e.g. a MAKE_FUNCTION
+                    // whose code object is never loaded). The loop's
+                    // while(!atEof()) guard already terminates cleanly when
+                    // the code object ends exactly on this RETURN_VALUE.
                 }
             }
             break;
@@ -2998,11 +3040,29 @@ void print_src(PycRef<ASTNode> node, PycModule* mod, std::ostream& pyc_output)
             for (const auto& param : call->kwparams()) {
                 if (!first)
                     pyc_output << ", ";
+                bool printed_key = false;
                 if (param.first.type() == ASTNode::NODE_NAME) {
                     pyc_output << param.first.cast<ASTName>()->name()->value() << " = ";
-                } else {
-                    PycRef<PycString> str_name = param.first.cast<ASTObject>()->object().cast<PycString>();
-                    pyc_output << str_name->value() << " = ";
+                    printed_key = true;
+                } else if (param.first.type() == ASTNode::NODE_OBJECT) {
+                    PycRef<PycObject> obj = param.first.cast<ASTObject>()->object();
+                    int otype = obj.type();
+                    if (otype == PycObject::TYPE_STRING ||
+                        otype == PycObject::TYPE_INTERNED ||
+                        otype == PycObject::TYPE_STRINGREF ||
+                        otype == PycObject::TYPE_ASCII ||
+                        otype == PycObject::TYPE_ASCII_INTERNED) {
+                        PycRef<PycString> str_name = obj.cast<PycString>();
+                        pyc_output << str_name->value() << " = ";
+                        printed_key = true;
+                    }
+                }
+                if (!printed_key) {
+                    // A non-string kwarg key (e.g. a stray value leaked by
+                    // an unmerged conditional expression) must not crash the
+                    // decompiler; render it as a general expression.
+                    print_src(param.first, mod, pyc_output);
+                    pyc_output << " = ";
                 }
                 print_src(param.second, mod, pyc_output);
                 first = false;
